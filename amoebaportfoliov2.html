@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Amoeba Simulator</title>
+    <style>
+        body { 
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        #portfolio-value {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 24px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+        }
+        canvas {
+            touch-action: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="portfolio-value">Portfolio Value: $<span id="value">500</span></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+    <script>
+        let amoeba;
+        let gainClusters = [];
+        let lossClusters = [];
+        let portfolioValue = 500;
+        let zoomLevel = 1;
+        let panX = 0;
+        let panY = 0;
+        let isDragging = false;
+        let isRotating = false;
+        let rotation = 0;
+        let optionsData = [];
+
+        function preload() {
+            // Load the CSV file
+            loadTable('option_holdings.csv', 'csv', 'header', (table) => {
+                for (let row of table.rows) {
+                    optionsData.push({
+                        symbol: row.get('symbol'),
+                        marketValue: parseFloat(row.get('Market Value')),
+                        gainLoss: parseFloat(row.get('Gain/Loss'))
+                    });
+                }
+                // Calculate total portfolio value and update display
+                portfolioValue = optionsData.reduce((sum, opt) => sum + opt.marketValue, 0);
+                document.getElementById('value').textContent = portfolioValue.toFixed(2);
+            });
+        }
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            amoeba = new Amoeba(width/2, height/2);
+            
+            // Create clusters based on options data
+            optionsData.forEach(opt => {
+                if (opt.gainLoss > 0) {
+                    gainClusters.push(new Cluster(true, opt.gainLoss, opt.symbol));
+                } else {
+                    lossClusters.push(new Cluster(false, Math.abs(opt.gainLoss), opt.symbol));
+                }
+            });
+
+            // Add mouse wheel event for zoom
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                zoomLevel *= e.deltaY > 0 ? 0.95 : 1.05;
+                zoomLevel = constrain(zoomLevel, 0.5, 5);
+            });
+        }
+
+        function draw() {
+            background(20, 25, 40);
+            
+            // Apply transformations
+            translate(width/2, height/2);
+            scale(zoomLevel);
+            rotate(rotation);
+            translate(-width/2 + panX, -height/2 + panY);
+            
+            // Update and display clusters
+            [...gainClusters, ...lossClusters].forEach(cluster => {
+                cluster.update();
+                cluster.display();
+            });
+            
+            // Update and display amoeba
+            amoeba.update();
+            amoeba.display();
+        }
+
+        class Amoeba {
+            constructor(x, y) {
+                this.pos = createVector(x, y);
+                this.vel = createVector(0, 0);
+                this.acc = createVector(0, 0);
+                this.points = [];
+                this.tentacles = [];
+                this.noiseOffset = random(1000);
+                
+                // Create blob points
+                for(let i = 0; i < 24; i++) {
+                    this.points.push({
+                        angle: (i/24) * TWO_PI,
+                        r: 100,  // Increased base radius
+                        noiseOffset: random(1000)
+                    });
+                }
+                
+                // Create tentacles with longer reach
+                for(let i = 0; i < 10; i++) {  // Increased number of tentacles
+                    this.tentacles.push(new Tentacle(this, (i/10) * TWO_PI));
+                }
+            }
+            
+            update() {
+                // Add some wandering motion
+                let noiseX = noise(this.noiseOffset) * 2 - 1;
+                let noiseY = noise(this.noiseOffset + 5000) * 2 - 1;
+                this.acc.add(createVector(noiseX, noiseY).mult(0.1));
+                
+                // Update position
+                this.vel.add(this.acc);
+                this.vel.limit(2);
+                this.pos.add(this.vel);
+                this.acc.mult(0);
+                
+                // Bounce off edges
+                if (this.pos.x < 100) this.vel.x = abs(this.vel.x);
+                if (this.pos.x > width-100) this.vel.x = -abs(this.vel.x);
+                if (this.pos.y < 100) this.vel.y = abs(this.vel.y);
+                if (this.pos.y > height-100) this.vel.y = -abs(this.vel.y);
+                
+                // Update tentacles
+                this.tentacles.forEach(t => t.update());
+                
+                this.noiseOffset += 0.01;
+            }
+            
+            display() {
+                push();
+                noStroke();
+                fill(255, 255, 255, 180);
+                
+                beginShape();
+                // Draw main blob
+                for(let i = 0; i <= this.points.length; i++) {
+                    let index = i % this.points.length;
+                    let p = this.points[index];
+                    let r = p.r * (1 + noise(p.noiseOffset) * 0.2);
+                    let x = this.pos.x + cos(p.angle) * r;
+                    let y = this.pos.y + sin(p.angle) * r;
+                    
+                    if(i === 0) {
+                        curveVertex(x, y);
+                    }
+                    curveVertex(x, y);
+                    
+                    if(i === this.points.length) {
+                        curveVertex(x, y);
+                    }
+                    
+                    p.noiseOffset += 0.02;
+                }
+                endShape(CLOSE);
+                
+                // Draw portfolio value
+                fill(0);
+                textAlign(CENTER, CENTER);
+                textSize(24);
+                text("$" + portfolioValue.toFixed(0), this.pos.x, this.pos.y);
+                
+                // Draw tentacles
+                this.tentacles.forEach(t => t.display());
+                pop();
+            }
+        }
+
+        class Tentacle {
+            constructor(parent, baseAngle) {
+                this.parent = parent;
+                this.baseAngle = baseAngle;
+                this.segments = [];
+                this.numSegments = 8;  // Increased number of segments
+                
+                // Create longer segments
+                for(let i = 0; i < this.numSegments; i++) {
+                    this.segments.push({
+                        angle: baseAngle,
+                        length: 30,  // Increased segment length
+                        noiseOffset: random(1000)
+                    });
+                }
+            }
+            
+            update() {
+                let time = frameCount * 0.02;
+                let prevX = this.parent.pos.x + cos(this.baseAngle) * this.parent.points[0].r;  // Start from edge
+                let prevY = this.parent.pos.y + sin(this.baseAngle) * this.parent.points[0].r;
+                let prevAngle = this.baseAngle + sin(time + this.baseAngle) * 0.3;
+                
+                this.segments.forEach((seg, i) => {
+                    let noise1 = noise(seg.noiseOffset + time) * 0.3;
+                    let noise2 = noise(seg.noiseOffset + 1000 + time) * 0.3;
+                    seg.angle = prevAngle + noise1 - noise2;
+                    
+                    let x = prevX + cos(seg.angle) * seg.length;
+                    let y = prevY + sin(seg.angle) * seg.length;
+                    
+                    prevX = x;
+                    prevY = y;
+                    prevAngle = seg.angle;
+                    
+                    seg.noiseOffset += 0.01;
+                });
+            }
+            
+            display() {
+                let x = this.parent.pos.x + cos(this.baseAngle) * this.parent.points[0].r;
+                let y = this.parent.pos.y + sin(this.baseAngle) * this.parent.points[0].r;
+                let prevX = x;
+                let prevY = y;
+                
+                stroke(255, 255, 255, 150);
+                strokeWeight(8);
+                
+                this.segments.forEach((seg, i) => {
+                    let nextX = prevX + cos(seg.angle) * seg.length;
+                    let nextY = prevY + sin(seg.angle) * seg.length;
+                    
+                    strokeWeight(map(i, 0, this.segments.length, 8, 2));  // Taper tentacles
+                    line(prevX, prevY, nextX, nextY);
+                    
+                    prevX = nextX;
+                    prevY = nextY;
+                });
+            }
+        }
+
+        class Cluster {
+            constructor(isGain, value, symbol) {
+                this.isGain = isGain;
+                this.value = value;
+                this.symbol = symbol;
+                this.cells = [];
+                this.pos = createVector(random(width), random(height));
+                this.vel = p5.Vector.random2D().mult(0.5);
+                
+                // Create cells based on value
+                const numCells = map(value, 0, 100, 5, 20);
+                for(let i = 0; i < numCells; i++) {
+                    this.cells.push({
+                        offset: p5.Vector.random2D().mult(random(20, 40)),
+                        size: random(10, 25),
+                        phase: random(TWO_PI)
+                    });
+                }
+            }
+            
+            update() {
+                // Organic movement
+                this.pos.add(this.vel);
+                this.vel.rotate(random(-0.1, 0.1));
+                
+                // Bounce off edges
+                if (this.pos.x < 0 || this.pos.x > width) this.vel.x *= -1;
+                if (this.pos.y < 0 || this.pos.y > height) this.vel.y *= -1;
+            }
+            
+            display() {
+                push();
+                translate(this.pos.x, this.pos.y);
+                
+                // Draw cells
+                this.cells.forEach(cell => {
+                    let wobble = sin(frameCount * 0.05 + cell.phase) * 2;
+                    let finalSize = cell.size + wobble;
+                    
+                    // Cell body
+                    noStroke();
+                    if (this.isGain) {
+                        fill(100, 255, 100, 150);
+                    } else {
+                        fill(255, 100, 100, 150);
+                    }
+                    
+                    circle(
+                        cell.offset.x + sin(frameCount * 0.02 + cell.phase) * 2,
+                        cell.offset.y + cos(frameCount * 0.02 + cell.phase) * 2,
+                        finalSize
+                    );
+                    
+                    // Cell nucleus
+                    fill(255, 255, 255, 100);
+                    circle(
+                        cell.offset.x + sin(frameCount * 0.02 + cell.phase) * 2,
+                        cell.offset.y + cos(frameCount * 0.02 + cell.phase) * 2,
+                        finalSize * 0.5
+                    );
+                });
+                
+                // Draw symbol
+                fill(255);
+                textAlign(CENTER);
+                textSize(14);
+                text(this.symbol, 0, 0);
+                
+                pop();
+            }
+        }
+
+        function mouseDragged() {
+            if (mouseButton === LEFT) {
+                panX += movedX / zoomLevel;
+                panY += movedY / zoomLevel;
+            } else if (mouseButton === RIGHT) {
+                rotation += movedX * 0.01;
+            }
+            return false;  // Prevent default
+        }
+
+        function mousePressed() {
+            if (mouseButton === LEFT) {
+                isDragging = true;
+            } else if (mouseButton === RIGHT) {
+                isRotating = true;
+            }
+            return false;  // Prevent default
+        }
+
+        function mouseReleased() {
+            isDragging = false;
+            isRotating = false;
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+        }
+    </script>
+</body>
+</html> 

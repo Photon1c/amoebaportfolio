@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Portfolio Amoeba Simulator</title>
+    <style>
+        body { 
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background: #000;
+            width: 100vw;
+            height: 100vh;
+        }
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #portfolio-status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 16px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 100;
+            max-width: 300px;
+            width: calc(100% - 40px);
+            backdrop-filter: blur(5px);
+        }
+        #timeline {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: calc(100% - 40px);
+            max-width: 1200px;
+            height: 80px;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 100;
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+        }
+        #metrics {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 16px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 100;
+            max-width: 300px;
+            width: calc(100% - 40px);
+            backdrop-filter: blur(5px);
+        }
+        .gain { color: #4CAF50; }
+        .loss { color: #f44336; }
+        canvas {
+            touch-action: none;
+            display: block;
+        }
+        .dialog {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+            width: 90%;
+            max-width: 400px;
+        }
+        button {
+            background: #333;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #444;
+        }
+        #add-position-form {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        #add-position-form input,
+        #add-position-form select {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin: 5px 0;
+            width: 100%;
+            font-size: 14px;
+        }
+        #add-position-form input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        #add-position-form button {
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        /* Mobile-specific styles */
+        @media (max-width: 768px) {
+            #portfolio-status,
+            #metrics {
+                position: fixed;
+                max-width: none;
+                width: 100%;
+                left: 0;
+                right: 0;
+                border-radius: 0;
+                transform: translateY(-100%);
+                transition: transform 0.3s ease;
+            }
+            #portfolio-status.visible,
+            #metrics.visible {
+                transform: translateY(0);
+            }
+            #metrics {
+                top: auto;
+                bottom: 120px;
+            }
+            #timeline {
+                height: 60px;
+                bottom: 10px;
+            }
+            .dialog {
+                width: 95%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div id="portfolio-status">
+        <h3>Portfolio Status</h3>
+        <p>Current Value: $<span id="currentValue">0</span></p>
+        <p>Total Gain/Loss: $<span id="totalGainLoss">0</span></p>
+        <p>Number of Positions: <span id="positionCount">0</span></p>
+        
+        <div id="add-position-form">
+            <h4>Add New Position</h4>
+            <input type="number" id="position-amount" placeholder="Amount" step="0.01" min="0">
+            <select id="position-type">
+                <option value="long">Long</option>
+                <option value="short">Short</option>
+            </select>
+            <button id="add-position">Add Position</button>
+        </div>
+    </div>
+    
+    <div id="metrics">
+        <h3>Performance Metrics</h3>
+        <p>Win Rate: <span id="winRate">0</span>%</p>
+        <p>Avg Gain: $<span id="avgGain">0</span></p>
+        <p>Avg Loss: $<span id="avgLoss">0</span></p>
+    </div>
+    
+    <div id="timeline"></div>
+    
+    <div id="closePositionDialog" class="dialog">
+        <h3>Close Position</h3>
+        <p>Symbol: <span id="closeSymbol"></span></p>
+        <p>Current G/L: <span id="closeGainLoss"></span></p>
+        <button onclick="confirmClosePosition()">Confirm Close</button>
+        <button onclick="cancelClosePosition()">Cancel</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+    <script>
+        // Define classes first
+        class Portfolio {
+            constructor() {
+                this.openValue = 0;
+                this.realizedValue = 0;
+                this.totalValue = 0;
+                this.valueHistory = [];
+                this.positions = [];
+            }
+
+            getCurrentValue() {
+                return this.totalValue;
+            }
+
+            getTotalGainLoss() {
+                // Sum up gain/loss from open positions
+                const openPositionsGainLoss = positionHistory.open.reduce((sum, pos) => sum + pos.gainLoss, 0);
+                
+                // Add realized gains/losses
+                return openPositionsGainLoss + this.realizedValue;
+            }
+
+            updateValue() {
+                // Calculate total value of open positions
+                this.openValue = positionHistory.open.reduce((sum, pos) => sum + pos.marketValue, 0);
+                this.totalValue = this.openValue + this.realizedValue;
+                
+                this.valueHistory.push({
+                    timestamp: new Date(),
+                    openValue: this.openValue,
+                    realizedValue: this.realizedValue,
+                    totalValue: this.totalValue
+                });
+
+                updateDisplay();
+            }
+
+            addPosition(position) {
+                this.positions.push(position);
+                this.updateValue();
+            }
+
+            getHistory() {
+                return this.valueHistory;
+            }
+        }
+
+        class Position {
+            constructor(data) {
+                this.symbol = data.symbol;
+                this.marketValue = parseFloat(data.marketValue);
+                this.gainLoss = parseFloat(data.gainLoss);
+                this.isOpen = true;
+                this.closePrice = null;
+                this.closeDate = null;
+                this.realizedGainLoss = 0;
+            }
+        }
+
+        // Then declare variables
+        let amoeba;
+        let timelineVisualizer;
+        let performanceMetrics;
+        let gainClusters = [];
+        let lossClusters = [];
+        let zoomLevel = 1;
+        let panX = 0;
+        let panY = 0;
+        let isDragging = false;
+        let isRotating = false;
+        let rotation = 0;
+        let selectedCluster = null;
+
+        // Position tracking
+        let positionHistory = {
+            open: [],
+            closed: [],
+            realizedGains: 0,
+            realizedLosses: 0,
+            history: []
+        };
+
+        // Initialize portfolio after class definitions
+        const portfolio = new Portfolio();
+
+        function preload() {
+            // Load the CSV file
+            loadTable('option_holdings.csv', 'csv', 'header', (table) => {
+                for (let row of table.rows) {
+                    const position = new Position({
+                        symbol: row.get('symbol'),
+                        marketValue: row.get('Market Value'),
+                        gainLoss: row.get('Gain/Loss')
+                    });
+                    positionHistory.open.push(position);
+                }
+                
+                // Initialize portfolio after loading data
+                portfolio.updateValue();
+                createClusters();
+            });
+        }
+
+        function setup() {
+            const canvas = createCanvas(windowWidth, windowHeight);
+            canvas.parent('canvas-container');
+            
+            amoeba = new Amoeba(width/2, height/2);
+            timelineVisualizer = new TimelineVisualizer(width * 0.1, height * 0.8, width * 0.8, height * 0.15);
+            performanceMetrics = new PerformanceMetrics();
+            
+            // Load saved history if exists
+            loadHistory();
+            
+            // Setup event listeners
+            document.getElementById('add-position').addEventListener('click', () => {
+                const amount = parseFloat(document.getElementById('position-amount').value);
+                const type = document.getElementById('position-type').value;
+                
+                // Create new position with proper data structure
+                const position = new Position({
+                    symbol: type.toUpperCase() + '_' + Date.now(),
+                    marketValue: amount,
+                    gainLoss: 0  // Initial gain/loss is 0
+                });
+                
+                // Add to open positions
+                positionHistory.open.push(position);
+                
+                // Add to history
+                positionHistory.history.push({
+                    type: 'open',
+                    symbol: position.symbol,
+                    gainLoss: 0,
+                    timestamp: new Date()
+                });
+                
+                // Create new cluster
+                const cluster = new Cluster(position, type === 'long');
+                if (type === 'long') {
+                    gainClusters.push(cluster);
+                } else {
+                    lossClusters.push(cluster);
+                }
+                
+                // Update portfolio
+                portfolio.addPosition(position);
+                
+                // Clear form
+                document.getElementById('position-amount').value = '';
+                
+                // Save state
+                saveHistory();
+            });
+
+            // Initial window resize to set correct dimensions
+            windowResized();
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+            
+            // Update timeline visualizer dimensions
+            if (timelineVisualizer) {
+                timelineVisualizer.x = windowWidth * 0.1;
+                timelineVisualizer.y = windowHeight * 0.8;
+                timelineVisualizer.width = windowWidth * 0.8;
+                timelineVisualizer.height = windowHeight * 0.15;
+            }
+            
+            // Center amoeba
+            if (amoeba) {
+                amoeba.pos.x = windowWidth / 2;
+                amoeba.pos.y = windowHeight / 2;
+            }
+            
+            // Reset pan and zoom on resize
+            panX = 0;
+            panY = 0;
+            zoomLevel = 1;
+            rotation = 0;
+        }
+
+        // Add mouseWheel function for zoom
+        function mouseWheel(event) {
+            event.preventDefault();
+            zoomLevel *= event.delta > 0 ? 0.95 : 1.05;
+            zoomLevel = constrain(zoomLevel, 0.5, 5);
+            return false;
+        }
+
+        function createClusters() {
+            positionHistory.open.forEach(position => {
+                if (position.gainLoss > 0) {
+                    gainClusters.push(new Cluster(position, true));
+                } else {
+                    lossClusters.push(new Cluster(position, false));
+                }
+            });
+        }
+
+        class Cluster {
+            constructor(position, isGain) {
+                this.position = position;
+                this.isGain = isGain;
+                this.pos = createVector(random(width), random(height));
+                this.vel = p5.Vector.random2D().mult(0.5);
+                this.cells = [];
+                this.isClosing = false;
+                this.closingAnimation = null;
+                this.rotationAngle = random(TWO_PI);
+                this.rotationSpeed = random(-0.02, 0.02);
+                
+                // Create cells based on position value with 3D offset
+                const numCells = map(abs(position.marketValue), 0, 100, 8, 25);
+                for(let i = 0; i < numCells; i++) {
+                    this.cells.push({
+                        offset: p5.Vector.random2D().mult(random(20, 40)),
+                        size: random(15, 30),
+                        phase: random(TWO_PI),
+                        zOffset: random(-20, 20), // For 3D effect
+                        rotationPhase: random(TWO_PI),
+                        pulseSpeed: random(0.02, 0.05)
+                    });
+                }
+            }
+
+            update() {
+                if (this.isClosing) {
+                    this.updateClosingAnimation();
+                    return;
+                }
+
+                // Rotate the entire cluster
+                this.rotationAngle += this.rotationSpeed;
+
+                // Normal movement with smooth transitions
+                this.vel.rotate(noise(frameCount * 0.01, this.pos.x * 0.01, this.pos.y * 0.01) * 0.2 - 0.1);
+                this.pos.add(this.vel);
+                
+                // Bounce off edges with smooth transition
+                const margin = 50;
+                if (this.pos.x < margin || this.pos.x > width - margin) {
+                    this.vel.x *= -0.8;
+                    this.vel.y += random(-0.5, 0.5);
+                }
+                if (this.pos.y < margin || this.pos.y > height - margin) {
+                    this.vel.y *= -0.8;
+                    this.vel.x += random(-0.5, 0.5);
+                }
+                
+                // Update cell animations
+                this.cells.forEach(cell => {
+                    cell.rotationPhase += 0.02;
+                });
+            }
+
+            updateClosingAnimation() {
+                if (!this.closingAnimation) return;
+                
+                const elapsed = millis() - this.closingAnimation.startTime;
+                if (elapsed >= this.closingAnimation.duration) {
+                    this.onClose();
+                } else {
+                    // Animate closing effect
+                    const progress = elapsed / this.closingAnimation.duration;
+                    this.cells.forEach(cell => {
+                        cell.size *= (1 - progress * 0.1);
+                    });
+                }
+            }
+
+            display() {
+                push();
+                translate(this.pos.x, this.pos.y);
+                rotate(this.rotationAngle);
+                
+                // Sort cells by z-offset for proper 3D rendering
+                const sortedCells = [...this.cells].sort((a, b) => a.zOffset - b.zOffset);
+                
+                // Draw cells with 3D effect
+                sortedCells.forEach(cell => {
+                    push();
+                    
+                    // Calculate cell position with perspective
+                    const perspective = map(cell.zOffset, -20, 20, 0.8, 1.2);
+                    const xPos = cell.offset.x * perspective;
+                    const yPos = cell.offset.y * perspective;
+                    
+                    // Pulse animation
+                    const pulse = sin(frameCount * cell.pulseSpeed + cell.phase) * 0.2 + 0.8;
+                    const finalSize = cell.size * perspective * pulse;
+                    
+                    // Draw cell shadow
+                    noStroke();
+                    fill(0, 0, 0, 20);
+                    ellipse(xPos + 5, yPos + 5, finalSize * 0.9);
+                    
+                    // Draw cell glow
+                    for(let i = 3; i > 0; i--) {
+                        const glowSize = finalSize + i * 4;
+                        const glowAlpha = map(i, 0, 3, 0, 50);
+                        if (this.isGain) {
+                            fill(100, 255, 100, glowAlpha);
+                        } else {
+                            fill(255, 100, 100, glowAlpha);
+                        }
+                        ellipse(xPos, yPos, glowSize);
+                    }
+                    
+                    // Draw main cell body with gradient
+                    const baseColor = this.isGain ? 
+                        color(100, 255, 100) : 
+                        color(255, 100, 100);
+                    
+                    // Outer glow
+                    const gradientSteps = 5;
+                    for(let i = gradientSteps; i > 0; i--) {
+                        const ratio = i / gradientSteps;
+                        const gradientColor = lerpColor(
+                            color(baseColor.levels[0], baseColor.levels[1], baseColor.levels[2], 0),
+                            color(baseColor.levels[0], baseColor.levels[1], baseColor.levels[2], 150),
+                            ratio
+                        );
+                        fill(gradientColor);
+                        ellipse(xPos, yPos, finalSize * ratio);
+                    }
+                    
+                    // Cell highlight
+                    fill(255, 255, 255, 100);
+                    const highlightSize = finalSize * 0.3;
+                    const highlightOffset = finalSize * 0.2;
+                    ellipse(xPos - highlightOffset, yPos - highlightOffset, highlightSize);
+                    
+                    pop();
+                });
+                
+                // Draw symbol and value with 3D effect
+                const textOffset = this.isClosing ? map(this.closingAnimation.elapsed, 0, this.closingAnimation.duration, 0, -50) : 0;
+                
+                // Text shadow
+                fill(0, 0, 0, 50);
+                textAlign(CENTER);
+                textSize(16);
+                text(this.position.symbol, 2, textOffset + 2);
+                text('$' + this.position.marketValue.toFixed(2), 2, textOffset + 22);
+                
+                // Main text with glow
+                for(let i = 3; i > 0; i--) {
+                    fill(255, 255, 255, i * 30);
+                    text(this.position.symbol, 0, textOffset);
+                    text('$' + this.position.marketValue.toFixed(2), 0, textOffset + 20);
+                }
+                
+                pop();
+            }
+
+            containsPoint(x, y) {
+                return dist(x, y, this.pos.x, this.pos.y) < 50;
+            }
+
+            startClosing() {
+                this.isClosing = true;
+                this.closingAnimation = {
+                    startTime: millis(),
+                    duration: 3000
+                };
+            }
+
+            onClose() {
+                // Move position from open to closed
+                const index = positionHistory.open.indexOf(this.position);
+                if (index > -1) {
+                    positionHistory.open.splice(index, 1);
+                    this.position.isOpen = false;
+                    this.position.closeDate = new Date();
+                    positionHistory.closed.push(this.position);
+                    
+                    // Update realized gains/losses
+                    if (this.position.gainLoss > 0) {
+                        positionHistory.realizedGains += this.position.gainLoss;
+                    } else {
+                        positionHistory.realizedLosses += this.position.gainLoss;
+                    }
+                    
+                    // Add to history
+                    positionHistory.history.push({
+                        type: 'close',
+                        symbol: this.position.symbol,
+                        gainLoss: this.position.gainLoss,
+                        timestamp: new Date()
+                    });
+                    
+                    // Update portfolio and metrics
+                    portfolio.realizedValue += this.position.gainLoss;
+                    portfolio.updateValue();
+                    performanceMetrics.update();
+                    
+                    // Remove cluster
+                    const clusterArray = this.isGain ? gainClusters : lossClusters;
+                    const clusterIndex = clusterArray.indexOf(this);
+                    if (clusterIndex > -1) {
+                        clusterArray.splice(clusterIndex, 1);
+                    }
+                    
+                    // Save updated history
+                    saveHistory();
+                }
+            }
+        }
+
+        class Amoeba {
+            constructor(x, y) {
+                this.pos = createVector(x, y);
+                this.radius = 50;
+                this.points = [];
+                this.tentacles = [];
+                this.noiseOffset = random(1000);
+                this.velocity = createVector(0, 0);
+                this.target = createVector(x, y);
+                
+                // Create base shape points with more detail
+                const numPoints = 48; // Increased for smoother shape
+                for (let i = 0; i < numPoints; i++) {
+                    const angle = map(i, 0, numPoints, 0, TWO_PI);
+                    this.points.push({
+                        angle: angle,
+                        radius: this.radius,
+                        noiseOffset: random(1000),
+                        wobbleSpeed: random(0.02, 0.05)
+                    });
+                }
+                
+                // Create tentacles with improved parameters
+                for (let i = 0; i < 12; i++) {
+                    this.tentacles.push({
+                        angle: (TWO_PI / 12) * i, // Evenly distribute tentacles
+                        length: random(60, 120), // Longer tentacles
+                        segments: [],
+                        phase: random(TWO_PI),
+                        thickness: random(8, 15),
+                        speed: random(0.01, 0.03),
+                        amplitude: random(0.2, 0.4)
+                    });
+                }
+            }
+            
+            update() {
+                // Update movement
+                const wanderRadius = 200;
+                if (random() < 0.02 || this.pos.dist(this.target) < 10) {
+                    // Set new target
+                    this.target.x = width/2 + random(-wanderRadius, wanderRadius);
+                    this.target.y = height/2 + random(-wanderRadius, wanderRadius);
+                }
+                
+                // Move towards target with smooth acceleration
+                const desired = p5.Vector.sub(this.target, this.pos);
+                desired.normalize();
+                desired.mult(2); // Speed factor
+                const steer = p5.Vector.sub(desired, this.velocity);
+                steer.limit(0.1); // Limit steering force
+                this.velocity.add(steer);
+                this.velocity.limit(3); // Limit max speed
+                this.pos.add(this.velocity);
+
+                // Update body shape with improved wobble
+                this.points.forEach(point => {
+                    const timeOffset = frameCount * point.wobbleSpeed;
+                    const noiseVal = noise(
+                        cos(point.angle) * 0.5 + timeOffset,
+                        sin(point.angle) * 0.5 + this.noiseOffset,
+                        frameCount * 0.01
+                    );
+                    point.radius = this.radius + map(noiseVal, 0, 1, -25, 25);
+                });
+                
+                // Update tentacles with more organic movement
+                this.tentacles.forEach(tentacle => {
+                    // Base angle follows movement direction
+                    const moveAngle = this.velocity.heading();
+                    tentacle.angle = moveAngle + tentacle.phase;
+                    
+                    // Update tentacle segments with improved wave motion
+                    const numSegments = 15; // More segments for smoother curves
+                    tentacle.segments = [];
+                    let prevX = 0;
+                    let prevY = 0;
+                    
+                    for (let i = 0; i < numSegments; i++) {
+                        const segmentLength = tentacle.length / numSegments;
+                        const waveOffset = sin(frameCount * tentacle.speed + tentacle.phase + i * 0.3) * 
+                                         tentacle.amplitude * i;
+                        const segmentAngle = tentacle.angle + waveOffset;
+                        
+                        const x = prevX + cos(segmentAngle) * segmentLength;
+                        const y = prevY + sin(segmentAngle) * segmentLength;
+                        
+                        tentacle.segments.push(createVector(x, y));
+                        prevX = x;
+                        prevY = y;
+                    }
+                });
+            }
+            
+            display() {
+                push();
+                translate(this.pos.x, this.pos.y);
+                
+                // Draw tentacles with gradient and glow effect
+                this.tentacles.forEach(tentacle => {
+                    push();
+                    noFill();
+                    
+                    // Draw glow effect
+                    for(let i = 3; i > 0; i--) {
+                        stroke(150, 200, 255, 20);
+                        strokeWeight(tentacle.thickness + i * 4);
+                        beginShape();
+                        tentacle.segments.forEach(segment => {
+                            curveVertex(segment.x, segment.y);
+                        });
+                        endShape();
+                    }
+                    
+                    // Draw main tentacle with gradient
+                    beginShape();
+                    for(let i = 0; i < tentacle.segments.length; i++) {
+                        const segment = tentacle.segments[i];
+                        const alpha = map(i, 0, tentacle.segments.length - 1, 150, 50);
+                        stroke(150, 200, 255, alpha);
+                        strokeWeight(map(i, 0, tentacle.segments.length - 1, 
+                                      tentacle.thickness, tentacle.thickness * 0.3));
+                        curveVertex(segment.x, segment.y);
+                    }
+                    endShape();
+                    pop();
+                });
+                
+                // Draw body with gradient and glow
+                for(let i = 3; i > 0; i--) {
+                    beginShape();
+                    noStroke();
+                    fill(100, 150, 255, 10);
+                    this.points.forEach(point => {
+                        const x = cos(point.angle) * (point.radius + i * 8);
+                        const y = sin(point.angle) * (point.radius + i * 8);
+                        curveVertex(x, y);
+                    });
+                    // Close the shape
+                    const firstPoint = this.points[0];
+                    const x = cos(firstPoint.angle) * (firstPoint.radius + i * 8);
+                    const y = sin(firstPoint.angle) * (firstPoint.radius + i * 8);
+                    curveVertex(x, y);
+                    endShape(CLOSE);
+                }
+                
+                // Main body with gradient
+                beginShape();
+                noStroke();
+                for(let i = 0; i < this.points.length; i++) {
+                    const point = this.points[i];
+                    const alpha = map(sin(point.angle), -1, 1, 100, 150);
+                    fill(100, 150, 255, alpha);
+                    const x = cos(point.angle) * point.radius;
+                    const y = sin(point.angle) * point.radius;
+                    curveVertex(x, y);
+                }
+                const firstPoint = this.points[0];
+                const x = cos(firstPoint.angle) * firstPoint.radius;
+                const y = sin(firstPoint.angle) * firstPoint.radius;
+                curveVertex(x, y);
+                endShape(CLOSE);
+                
+                pop();
+            }
+        }
+
+        class TimelineVisualizer {
+            constructor(x, y, width, height) {
+                this.visible = true;
+                this.events = [];
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+            }
+
+            update() {
+                this.events = positionHistory.history.map((event, i) => ({
+                    ...event,
+                    x: map(i, 0, positionHistory.history.length - 1, this.x, this.x + this.width)
+                }));
+            }
+
+            display(history) {
+                if (!this.visible) return;
+                
+                push();
+                translate(this.x, this.y);
+                
+                // Draw timeline base
+                stroke(100);
+                line(0, 0, this.width, 0);
+                
+                // Draw events
+                this.events.forEach(event => {
+                    noStroke();
+                    if (event.type === 'open') fill(255);
+                    else fill(event.gainLoss > 0 ? color(0,255,0) : color(255,0,0));
+                    
+                    circle(event.x, 0, 10);
+                    
+                    // Draw symbol and value
+                    push();
+                    translate(event.x, 0);
+                    rotate(-PI/4);
+                    fill(255);
+                    textAlign(LEFT);
+                    textSize(12);
+                    text(event.symbol, 10, 0);
+                    text('$' + abs(event.gainLoss).toFixed(2), 10, 15);
+                    pop();
+                });
+                
+                pop();
+            }
+        }
+
+        class PerformanceMetrics {
+            constructor() {
+                this.metrics = {
+                    winRate: 0,
+                    avgGain: 0,
+                    avgLoss: 0,
+                    largestGain: 0,
+                    largestLoss: 0
+                };
+            }
+
+            update() {
+                const closed = positionHistory.closed;
+                if (closed.length === 0) return;
+
+                const gains = closed.filter(p => p.gainLoss > 0);
+                const losses = closed.filter(p => p.gainLoss < 0);
+                
+                this.metrics.winRate = (gains.length / closed.length) * 100;
+                this.metrics.avgGain = gains.length > 0 ? 
+                    gains.reduce((sum, p) => sum + p.gainLoss, 0) / gains.length : 0;
+                this.metrics.avgLoss = losses.length > 0 ?
+                    losses.reduce((sum, p) => sum + p.gainLoss, 0) / losses.length : 0;
+                
+                // Update UI
+                document.getElementById('winRate').textContent = this.metrics.winRate.toFixed(1);
+                document.getElementById('avgGain').textContent = this.metrics.avgGain.toFixed(2);
+                document.getElementById('avgLoss').textContent = this.metrics.avgLoss.toFixed(2);
+            }
+
+            display(portfolio) {
+                // Implementation of display method
+            }
+        }
+
+        function draw() {
+            background(240);
+            
+            // Apply transformations
+            push();
+            translate(width/2, height/2);
+            scale(zoomLevel);
+            rotate(rotation);
+            translate(-width/2 + panX, -height/2 + panY);
+            
+            // Update and display clusters
+            [...gainClusters, ...lossClusters].forEach(cluster => {
+                cluster.update();
+                cluster.display();
+            });
+            
+            // Update and display amoeba
+            amoeba.update();
+            amoeba.display();
+            
+            // Update amoeba size based on portfolio value
+            const normalizedValue = map(portfolio.getCurrentValue(), 0, 1000, 30, 70);
+            amoeba.radius = normalizedValue;
+            
+            pop();
+            
+            // Display timeline and metrics
+            timelineVisualizer.update();
+            timelineVisualizer.display(portfolio.getHistory());
+            performanceMetrics.display(portfolio);
+            
+            // Update display
+            updateDisplay();
+        }
+
+        function mouseDragged() {
+            if (mouseButton === LEFT) {
+                panX += movedX / zoomLevel;
+                panY += movedY / zoomLevel;
+            } else if (mouseButton === RIGHT) {
+                rotation += movedX * 0.01;
+            }
+            return false;
+        }
+
+        function mousePressed() {
+            // Check for cluster selection
+            const mousePos = createVector(mouseX, mouseY);
+            [...gainClusters, ...lossClusters].forEach(cluster => {
+                if (cluster.containsPoint(mouseX, mouseY)) {
+                    selectedCluster = cluster;
+                    showClosePositionDialog(cluster);
+                }
+            });
+            
+            if (mouseButton === LEFT) isDragging = true;
+            else if (mouseButton === RIGHT) isRotating = true;
+            return false;
+        }
+
+        function mouseReleased() {
+            isDragging = false;
+            isRotating = false;
+            selectedCluster = null;
+        }
+
+        function showClosePositionDialog(cluster) {
+            const dialog = document.getElementById('closePositionDialog');
+            document.getElementById('closeSymbol').textContent = cluster.position.symbol;
+            document.getElementById('closeGainLoss').textContent = 
+                '$' + cluster.position.gainLoss.toFixed(2);
+            dialog.style.display = 'block';
+        }
+
+        function confirmClosePosition() {
+            if (selectedCluster) {
+                selectedCluster.startClosing();
+            }
+            document.getElementById('closePositionDialog').style.display = 'none';
+        }
+
+        function cancelClosePosition() {
+            document.getElementById('closePositionDialog').style.display = 'none';
+        }
+
+        function saveHistory() {
+            localStorage.setItem('positionHistory', JSON.stringify(positionHistory));
+        }
+
+        function loadHistory() {
+            const saved = localStorage.getItem('positionHistory');
+            if (saved) {
+                const loaded = JSON.parse(saved);
+                positionHistory = {
+                    ...loaded,
+                    open: loaded.open.map(p => new Position(p)),
+                    closed: loaded.closed.map(p => new Position(p))
+                };
+                portfolio.updateValue();
+                performanceMetrics.update();
+            }
+        }
+
+        function keyPressed() {
+            if (key === 'h' || key === 'H') {
+                const uiElements = [
+                    document.getElementById('portfolio-status'),
+                    document.getElementById('metrics'),
+                    document.getElementById('timeline')
+                ];
+                uiElements.forEach(el => {
+                    if (el) {
+                        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+                    }
+                });
+            }
+        }
+
+        function updateDisplay() {
+            const currentValue = portfolio.getCurrentValue();
+            const totalGainLoss = portfolio.getTotalGainLoss();
+            
+            document.getElementById('currentValue').textContent = currentValue.toFixed(2);
+            document.getElementById('totalGainLoss').textContent = totalGainLoss.toFixed(2);
+            document.getElementById('positionCount').textContent = portfolio.positions.length;
+        }
+
+        // Prevent right-click menu
+        document.addEventListener('contextmenu', event => event.preventDefault());
+    </script>
+</body>
+</html> 

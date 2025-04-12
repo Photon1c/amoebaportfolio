@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Amoeba Simulation</title>
+    <style>
+        body { 
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            max-width: 300px;
+        }
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        button, select {
+            margin: 5px;
+            padding: 5px 10px;
+        }
+        #stats {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            min-width: 200px;
+        }
+        .slider-container {
+            margin: 10px 0;
+        }
+        .slider-container label {
+            display: inline-block;
+            width: 150px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2>Portfolio Amoeba Simulation</h2>
+        <p>This simulation visualizes your stock portfolio as a living organism seeking "food" (gains) in the market.</p>
+        <p>Green tentacles represent positive gains, red ones represent losses.</p>
+    </div>
+    
+    <div id="controls">
+        <div class="slider-container">
+            <label for="metabolism">Metabolism Rate:</label>
+            <input type="range" id="metabolism" min="1" max="10" value="5">
+            <span id="metabolismValue">5</span>
+        </div>
+        <div class="slider-container">
+            <label for="foodDensity">Market Opportunity:</label>
+            <input type="range" id="foodDensity" min="1" max="10" value="5">
+            <span id="foodDensityValue">5</span>
+        </div>
+        <div class="slider-container">
+            <label for="riskAppetite">Risk Appetite:</label>
+            <input type="range" id="riskAppetite" min="1" max="10" value="5">
+            <span id="riskAppetiteValue">5</span>
+        </div>
+        <button id="resetBtn">Reset Simulation</button>
+        <button id="loadCSV">Load Portfolio Data</button>
+        <input type="file" id="csvFile" style="display:none" accept=".csv">
+    </div>
+    
+    <div id="stats">
+        <h3>Portfolio Stats</h3>
+        <p>Initial Value: $500</p>
+        <p>Current Value: $<span id="currentValue">500</span></p>
+        <p>Gains: <span id="gains">$0</span></p>
+        <p>Active Positions: <span id="positions">0</span></p>
+        <p>Market Mood: <span id="marketMood">Neutral</span></p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
+    <script>
+        // Main simulation variables
+        let scene, camera, renderer;
+        let amoeba, tentacles = [];
+        let foods = [];
+        let clock = new THREE.Clock();
+        let portfolioValue = 500;
+        let portfolioData = [];
+        let marketMood = "Neutral";
+        
+        // Simulation parameters
+        const params = {
+            metabolism: 5,
+            foodDensity: 5,
+            riskAppetite: 5
+        };
+
+        // Initialize the scene
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111122);
+
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 15;
+
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            // Create grid for orientation
+            const gridHelper = new THREE.GridHelper(50, 50);
+            scene.add(gridHelper);
+
+            // Create amoeba (portfolio)
+            createAmoeba();
+            
+            // Add initial food particles
+            createFood(15);
+
+            // Setup event listeners
+            setupEventListeners();
+            
+            // Start animation loop
+            animate();
+        }
+
+        function createAmoeba() {
+            // Create the main body geometry
+            const geometry = new THREE.SphereGeometry(3, 32, 32);
+            
+            // Create a material with some transparency
+            const material = new THREE.MeshPhongMaterial({
+                color: 0xFFFFFF,
+                transparent: true,
+                opacity: 0.7,
+                wireframe: false
+            });
+            
+            amoeba = new THREE.Mesh(geometry, material);
+            scene.add(amoeba);
+            
+            // Add label for portfolio value
+            createPortfolioLabel();
+            
+            // Add initial tentacles
+            createTentacle(0xaaff77, 2); // Green tentacle (gain)
+            createTentacle(0xaaff77, 2); // Green tentacle (gain)
+            createTentacle(0xff7777, 1); // Red tentacle (loss)
+        }
+        
+        function createPortfolioLabel() {
+            // This is a placeholder for where we'd create a text label in a full implementation
+            // For simplicity in this demo, we're updating the HTML directly instead
+        }
+
+        function createTentacle(color, strength) {
+            // Create a curved line for the tentacle
+            const points = [];
+            const segments = 20;
+            const baseOffset = new THREE.Vector3(
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2
+            ).normalize().multiplyScalar(3);
+            
+            // Create curved tentacle path
+            for (let i = 0; i <= segments; i++) {
+                const t = i / segments;
+                const dynamicOffset = new THREE.Vector3(
+                    Math.sin(t * Math.PI * 2) * (Math.random() * 0.5 + 0.5),
+                    Math.cos(t * Math.PI * 2) * (Math.random() * 0.5 + 0.5),
+                    Math.sin(t * Math.PI * 3) * (Math.random() * 0.5 + 0.5)
+                );
+                
+                const point = new THREE.Vector3().copy(baseOffset)
+                    .multiplyScalar(1 + t * 2)
+                    .add(dynamicOffset.multiplyScalar(t));
+                points.push(point);
+            }
+            
+            const curve = new THREE.CatmullRomCurve3(points);
+            const geometry = new THREE.TubeGeometry(curve, segments, 0.1 * strength, 8, false);
+            const material = new THREE.MeshPhongMaterial({ color: color });
+            const tentacle = new THREE.Mesh(geometry, material);
+            
+            tentacle.strength = strength;
+            tentacle.color = color;
+            tentacle.growthDirection = new THREE.Vector3(
+                Math.random() - 0.5,
+                Math.random() - 0.5,
+                Math.random() - 0.5
+            ).normalize();
+            
+            tentacle.growthRate = Math.random() * 0.05 + 0.02;
+            tentacle.age = 0;
+            tentacle.maxAge = Math.random() * 10 + 10;
+            
+            scene.add(tentacle);
+            tentacles.push(tentacle);
+            
+            return tentacle;
+        }
+
+        function createFood(count) {
+            for (let i = 0; i < count; i++) {
+                const isPositive = Math.random() > 0.4; // 60% chance of positive food
+                
+                const geometry = new THREE.SphereGeometry(0.2, 16, 16);
+                const material = new THREE.MeshPhongMaterial({
+                    color: isPositive ? 0x22ff22 : 0xff2222,
+                    emissive: isPositive ? 0x00ff00 : 0xff0000,
+                    emissiveIntensity: 0.5
+                });
+                
+                const food = new THREE.Mesh(geometry, material);
+                
+                // Position food randomly in a sphere around the scene
+                const radius = Math.random() * 15 + 10;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.random() * Math.PI;
+                
+                food.position.x = radius * Math.sin(phi) * Math.cos(theta);
+                food.position.y = radius * Math.sin(phi) * Math.sin(theta);
+                food.position.z = radius * Math.cos(phi);
+                
+                food.value = isPositive ? 
+                    (Math.random() * 20 + 5) : 
+                    -(Math.random() * 15 + 2);
+                    
+                food.isPositive = isPositive;
+                food.symbol = generateRandomStockSymbol();
+                
+                scene.add(food);
+                foods.push(food);
+            }
+        }
+        
+        function generateRandomStockSymbol() {
+            const symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA', 'JPM', 'V', 'WMT'];
+            return symbols[Math.floor(Math.random() * symbols.length)];
+        }
+
+        function updateSimulation() {
+            const deltaTime = clock.getDelta();
+            const time = clock.getElapsedTime();
+            
+            // Update amoeba pulsation
+            if (amoeba) {
+                amoeba.scale.x = 1 + Math.sin(time * 2) * 0.05;
+                amoeba.scale.y = 1 + Math.sin(time * 2.5) * 0.05;
+                amoeba.scale.z = 1 + Math.sin(time * 1.5) * 0.05;
+                
+                // Slowly rotate the amoeba
+                amoeba.rotation.y += deltaTime * 0.1;
+            }
+            
+            // Update tentacles
+            for (let i = tentacles.length - 1; i >= 0; i--) {
+                const tentacle = tentacles[i];
+                tentacle.age += deltaTime;
+                
+                // Move tentacles
+                if (Math.random() > 0.95) {
+                    tentacle.growthDirection.x += (Math.random() - 0.5) * 0.5;
+                    tentacle.growthDirection.y += (Math.random() - 0.5) * 0.5;
+                    tentacle.growthDirection.z += (Math.random() - 0.5) * 0.5;
+                    tentacle.growthDirection.normalize();
+                }
+                
+                // Remove old tentacles
+                if (tentacle.age > tentacle.maxAge) {
+                    scene.remove(tentacle);
+                    tentacles.splice(i, 1);
+                    
+                    // Chance to add a new tentacle
+                    if (Math.random() > 0.3) {
+                        const isGain = Math.random() > 0.4;
+                        createTentacle(isGain ? 0xaaff77 : 0xff7777, isGain ? 2 : 1);
+                    }
+                }
+            }
+            
+            // Check for food collisions
+            for (let i = foods.length - 1; i >= 0; i--) {
+                const food = foods[i];
+                const distanceToAmoeba = food.position.distanceTo(amoeba.position);
+                
+                // Move food slightly
+                food.position.x += (Math.random() - 0.5) * 0.1;
+                food.position.y += (Math.random() - 0.5) * 0.1;
+                food.position.z += (Math.random() - 0.5) * 0.1;
+                
+                // Check if amoeba reached food
+                if (distanceToAmoeba < 4) {
+                    // Consume the food
+                    scene.remove(food);
+                    foods.splice(i, 1);
+                    
+                    // Update portfolio value
+                    updatePortfolioValue(food.value);
+                    
+                    // Create a new tentacle based on food value
+                    if (food.isPositive) {
+                        createTentacle(0xaaff77, 2); // Green tentacle for gain
+                    } else {
+                        createTentacle(0xff7777, 1); // Red tentacle for loss
+                    }
+                    
+                    // Add new food to replace consumed one
+                    createFood(1);
+                }
+            }
+            
+            // Move amoeba based on parameter settings
+            moveAmoeba(deltaTime);
+            
+            // Occasionally generate new food based on food density parameter
+            if (Math.random() < 0.02 * params.foodDensity / 5) {
+                createFood(1);
+            }
+            
+            // Update UI stats
+            updateStats();
+        }
+        
+        function moveAmoeba(deltaTime) {
+            // Find the nearest positive food
+            let nearestPositiveFood = null;
+            let minDist = Infinity;
+            
+            for (let food of foods) {
+                if (food.isPositive) {
+                    const dist = food.position.distanceTo(amoeba.position);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        nearestPositiveFood = food;
+                    }
+                }
+            }
+            
+            if (nearestPositiveFood) {
+                // Calculate direction to food
+                const direction = new THREE.Vector3()
+                    .subVectors(nearestPositiveFood.position, amoeba.position)
+                    .normalize();
+                
+                // Move toward the food based on metabolism rate
+                const speed = 0.5 * params.metabolism / 5;
+                amoeba.position.add(direction.multiplyScalar(speed * deltaTime));
+            }
+        }
+        
+        function updatePortfolioValue(change) {
+            portfolioValue += change;
+            document.getElementById('currentValue').textContent = portfolioValue.toFixed(2);
+            
+            const gainValue = portfolioValue - 500;
+            document.getElementById('gains').textContent = 
+                (gainValue >= 0 ? '+' : '') + 
+                '$' + Math.abs(gainValue).toFixed(2) + 
+                ' (' + ((gainValue / 500) * 100).toFixed(1) + '%)';
+            
+            // Update market mood
+            if (gainValue > 50) marketMood = "Bullish";
+            else if (gainValue > 0) marketMood = "Positive";
+            else if (gainValue > -50) marketMood = "Cautious";
+            else marketMood = "Bearish";
+            
+            document.getElementById('marketMood').textContent = marketMood;
+        }
+        
+        function updateStats() {
+            document.getElementById('positions').textContent = tentacles.length;
+            
+            // Update slider value indicators
+            document.getElementById('metabolismValue').textContent = params.metabolism;
+            document.getElementById('foodDensityValue').textContent = params.foodDensity;
+            document.getElementById('riskAppetiteValue').textContent = params.riskAppetite;
+        }
+
+        function setupEventListeners() {
+            // Add window resize handler
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+            
+            // Add slider event listeners
+            document.getElementById('metabolism').addEventListener('input', (e) => {
+                params.metabolism = parseInt(e.target.value);
+            });
+            
+            document.getElementById('foodDensity').addEventListener('input', (e) => {
+                params.foodDensity = parseInt(e.target.value);
+            });
+            
+            document.getElementById('riskAppetite').addEventListener('input', (e) => {
+                params.riskAppetite = parseInt(e.target.value);
+                // Adjust simulation risk parameters
+                updateRiskParameters();
+            });
+            
+            // Add reset button handler
+            document.getElementById('resetBtn').addEventListener('click', resetSimulation);
+            
+            // Add CSV file loader
+            document.getElementById('loadCSV').addEventListener('click', () => {
+                document.getElementById('csvFile').click();
+            });
+            
+            document.getElementById('csvFile').addEventListener('change', handleFileSelect);
+        }
+        
+        function updateRiskParameters() {
+            // Higher risk means more extreme food values (both positive and negative)
+            const riskFactor = params.riskAppetite / 5;
+            
+            // Adjust existing food values
+            for (let food of foods) {
+                if (food.isPositive) {
+                    food.value = Math.random() * 20 * riskFactor + 5;
+                } else {
+                    food.value = -(Math.random() * 15 * riskFactor + 2);
+                }
+            }
+        }
+
+        function resetSimulation() {
+            // Remove all objects
+            while (tentacles.length > 0) {
+                scene.remove(tentacles.pop());
+            }
+            
+            while (foods.length > 0) {
+                scene.remove(foods.pop());
+            }
+            
+            if (amoeba) {
+                scene.remove(amoeba);
+            }
+            
+            // Reset portfolio value
+            portfolioValue = 500;
+            document.getElementById('currentValue').textContent = '500';
+            document.getElementById('gains').textContent = '$0';
+            document.getElementById('marketMood').textContent = 'Neutral';
+            
+            // Create new simulation elements
+            createAmoeba();
+            createFood(15);
+        }
+        
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            
+            if (file) {
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    try {
+                        const csvData = e.target.result;
+                        processCSVData(csvData);
+                    } catch (error) {
+                        console.error("Error processing CSV file:", error);
+                        alert("Error processing CSV file. Please check the format.");
+                    }
+                };
+                
+                reader.readAsText(file);
+            }
+        }
+        
+        function processCSVData(csvData) {
+            // Basic CSV parsing for demonstration purposes
+            const lines = csvData.split('\n');
+            const headers = lines[0].split(',');
+            
+            // Reset current portfolio data
+            portfolioData = [];
+            
+            // Process each line (skip header)
+            for (let i = 1; i < lines.length; i++) {
+                if (lines[i].trim() === '') continue;
+                
+                const values = lines[i].split(',');
+                const stockData = {};
+                
+                for (let j = 0; j < headers.length; j++) {
+                    stockData[headers[j].trim()] = values[j].trim();
+                }
+                
+                portfolioData.push(stockData);
+            }
+            
+            // Update simulation based on loaded data
+            updateSimulationFromPortfolioData();
+        }
+        
+        function updateSimulationFromPortfolioData() {
+            // This is where we would parse the CSV data and update the simulation
+            // For demo purposes, we'll just modify some parameters
+            
+            if (portfolioData.length > 0) {
+                resetSimulation();
+                
+                // Create food particles based on actual stocks
+                for (let stock of portfolioData) {
+                    const symbol = stock.symbol || stock.Symbol || "UNKNOWN";
+                    const price = parseFloat(stock.price || stock.Price || "0");
+                    const shares = parseFloat(stock.shares || stock.Shares || "0");
+                    
+                    if (price && shares) {
+                        const value = price * shares;
+                        createStockFood(symbol, value);
+                    }
+                }
+                
+                alert(`Loaded ${portfolioData.length} stocks into simulation.`);
+            }
+        }
+        
+        function createStockFood(symbol, value) {
+            const isPositive = value > 0;
+            
+            const geometry = new THREE.SphereGeometry(0.2, 16, 16);
+            const material = new THREE.MeshPhongMaterial({
+                color: isPositive ? 0x22ff22 : 0xff2222,
+                emissive: isPositive ? 0x00ff00 : 0xff0000,
+                emissiveIntensity: 0.5
+            });
+            
+            const food = new THREE.Mesh(geometry, material);
+            
+            // Position food randomly in a sphere around the scene
+            const radius = Math.random() * 15 + 10;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.random() * Math.PI;
+            
+            food.position.x = radius * Math.sin(phi) * Math.cos(theta);
+            food.position.y = radius * Math.sin(phi) * Math.sin(theta);
+            food.position.z = radius * Math.cos(phi);
+            
+            food.value = isPositive ? Math.abs(value) / 10 : -Math.abs(value) / 10;
+            food.isPositive = isPositive;
+            food.symbol = symbol;
+            
+            scene.add(food);
+            foods.push(food);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update simulation logic
+            updateSimulation();
+            
+            // Render the scene
+            renderer.render(scene, camera);
+        }
+
+        // Initialize on page load
+        window.onload = init;
+    </script>
+</body>
+</html>
