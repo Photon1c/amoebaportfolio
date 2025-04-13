@@ -10,7 +10,7 @@ A collection of p5.js and Three.js HTML scripts to visualize a portfolio as a 3D
 
 There are three versions of the simulation:  
 
-[Version 1](https://cheddarbutler.com/work/amoebaportfolio/amoebaportfoliov1.html)
+[Version 1](https://cheddarbutler.com/work/amoebaportfolio/)
 
 ![f](media/amoeba-portfolio-j.PNG)
 
