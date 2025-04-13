@@ -149,10 +149,116 @@
                 width: 95%;
             }
         }
+
+        #instruction-prompt {
+            position: absolute;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 16px;
+            text-align: center;
+            animation: blink 2s infinite;
+            text-shadow: 0 0 10px rgba(100, 150, 255, 0.5);
+            pointer-events: none;
+        }
+
+        #instruction-overlay {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            z-index: 2000;
+            max-width: 600px;
+            width: 90%;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 150, 255, 0.3);
+            box-shadow: 0 0 20px rgba(100, 150, 255, 0.2);
+        }
+
+        #instruction-overlay h2 {
+            color: rgb(100, 150, 255);
+            margin-top: 0;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        #instruction-overlay .section {
+            margin-bottom: 20px;
+        }
+
+        #instruction-overlay .section-title {
+            color: rgb(100, 150, 255);
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        #instruction-overlay kbd {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-family: monospace;
+            margin: 0 2px;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
     </style>
 </head>
 <body>
     <div id="canvas-container"></div>
+    <div id="instruction-prompt">Press <kbd>I</kbd> for Instructions</div>
+    <div id="instruction-overlay">
+        <h2>Amoeba Portfolio Simulator Instructions</h2>
+        
+        <div class="section">
+            <div class="section-title">Navigation Controls</div>
+            <p>
+                • <kbd>Left Mouse</kbd> + Drag: Pan the view<br>
+                • <kbd>Right Mouse</kbd> or <kbd>Shift</kbd> + <kbd>Left Mouse</kbd> + Drag: Rotate the view<br>
+                • <kbd>Mouse Wheel</kbd>: Zoom in/out
+            </p>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Amoeba Controls</div>
+            <p>
+                • Mouse cursor controls amoeba movement by default<br>
+                • <kbd>M</kbd>: Toggle between mouse control and autonomous mode
+            </p>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Interface Controls</div>
+            <p>
+                • <kbd>H</kbd>: Hide/Show all UI elements<br>
+                • <kbd>I</kbd>: Toggle this instruction overlay<br>
+                • Click on cells to view and close positions
+            </p>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Cell Information</div>
+            <p>
+                • Green cells represent gains<br>
+                • Red cells represent losses<br>
+                • Cell size indicates position value<br>
+                • Dollar values are shown on each cell
+            </p>
+        </div>
+
+        <p style="text-align: center; margin-top: 30px; color: rgba(255,255,255,0.6);">
+            Press <kbd>I</kbd> again to close
+        </p>
+    </div>
     <div id="portfolio-status">
         <h3>Portfolio Status</h3>
         <p>Current Value: $<span id="currentValue">0</span></p>
@@ -252,8 +358,8 @@
         let amoeba;
         let timelineVisualizer;
         let performanceMetrics;
-        let gainClusters = [];
-        let lossClusters = [];
+        let gainCells = [];
+        let lossCells = [];
         let zoomLevel = 1;
         let panX = 0;
         let panY = 0;
@@ -327,11 +433,11 @@
                 });
                 
                 // Create new cluster
-                const cluster = new Cluster(position, type === 'long');
+                const cluster = new Cell(position, type === 'long');
                 if (type === 'long') {
-                    gainClusters.push(cluster);
+                    gainCells.push(cluster);
                 } else {
-                    lossClusters.push(cluster);
+                    lossCells.push(cluster);
                 }
                 
                 // Update portfolio
@@ -383,387 +489,327 @@
         function createClusters() {
             positionHistory.open.forEach(position => {
                 if (position.gainLoss > 0) {
-                    gainClusters.push(new Cluster(position, true));
+                    gainCells.push(new Cell(position, true));
                 } else {
-                    lossClusters.push(new Cluster(position, false));
+                    lossCells.push(new Cell(position, false));
                 }
             });
         }
 
-        class Cluster {
+        class Cell {
             constructor(position, isGain) {
                 this.position = position;
                 this.isGain = isGain;
-                this.pos = createVector(random(width), random(height));
-                this.vel = p5.Vector.random2D().mult(0.5);
-                this.cells = [];
-                this.isClosing = false;
-                this.closingAnimation = null;
-                this.rotationAngle = random(TWO_PI);
-                this.rotationSpeed = random(-0.02, 0.02);
-                
-                // Create cells based on position value with 3D offset
-                const numCells = map(abs(position.marketValue), 0, 100, 8, 25);
-                for(let i = 0; i < numCells; i++) {
-                    this.cells.push({
-                        offset: p5.Vector.random2D().mult(random(20, 40)),
-                        size: random(15, 30),
-                        phase: random(TWO_PI),
-                        zOffset: random(-20, 20), // For 3D effect
-                        rotationPhase: random(TWO_PI),
-                        pulseSpeed: random(0.02, 0.05)
-                    });
-                }
+                this.pos = createVector(
+                    width/2 + random(-width/3, width/3),
+                    height/2 + random(-height/3, height/3)
+                );
+                this.vel = p5.Vector.random2D().mult(2);
+                this.acc = createVector(0, 0);
+                this.size = map(abs(position.marketValue), 0, 100, 15, 40);
+                this.phase = random(TWO_PI);
+                this.rotationPhase = random(TWO_PI);
+                this.pulseSpeed = random(0.02, 0.05);
+                this.maxSpeed = 2;
+                this.maxForce = 0.1;
+                this.wanderAngle = random(TWO_PI);
+                this.wanderRadius = 30;
+                this.wanderOffset = 20;
+                this.marketValue = abs(position.marketValue);
             }
 
             update() {
-                if (this.isClosing) {
-                    this.updateClosingAnimation();
-                    return;
-                }
-
-                // Rotate the entire cluster
-                this.rotationAngle += this.rotationSpeed;
-
-                // Normal movement with smooth transitions
-                this.vel.rotate(noise(frameCount * 0.01, this.pos.x * 0.01, this.pos.y * 0.01) * 0.2 - 0.1);
-                this.pos.add(this.vel);
+                // Wander behavior
+                this.wanderAngle += random(-0.3, 0.3);
+                const wanderPoint = p5.Vector.fromAngle(this.wanderAngle);
+                wanderPoint.mult(this.wanderRadius);
+                wanderPoint.add(p5.Vector.mult(this.vel.copy().normalize(), this.wanderOffset));
                 
-                // Bounce off edges with smooth transition
-                const margin = 50;
-                if (this.pos.x < margin || this.pos.x > width - margin) {
-                    this.vel.x *= -0.8;
-                    this.vel.y += random(-0.5, 0.5);
-                }
-                if (this.pos.y < margin || this.pos.y > height - margin) {
-                    this.vel.y *= -0.8;
-                    this.vel.x += random(-0.5, 0.5);
-                }
+                const target = p5.Vector.add(this.pos, wanderPoint);
+                const desired = p5.Vector.sub(target, this.pos);
+                desired.normalize();
+                desired.mult(this.maxSpeed);
                 
-                // Update cell animations
-                this.cells.forEach(cell => {
-                    cell.rotationPhase += 0.02;
+                const steer = p5.Vector.sub(desired, this.vel);
+                steer.limit(this.maxForce);
+                this.acc.add(steer);
+
+                // Avoid other cells
+                const allCells = [...gainCells, ...lossCells];
+                allCells.forEach(other => {
+                    if (other !== this) {
+                        const d = p5.Vector.dist(this.pos, other.pos);
+                        if (d < 100 && d > 0) {
+                            const force = p5.Vector.sub(this.pos, other.pos);
+                            force.normalize();
+                            force.mult(0.3);
+                            this.acc.add(force);
+                        }
+                    }
                 });
-            }
 
-            updateClosingAnimation() {
-                if (!this.closingAnimation) return;
-                
-                const elapsed = millis() - this.closingAnimation.startTime;
-                if (elapsed >= this.closingAnimation.duration) {
-                    this.onClose();
-                } else {
-                    // Animate closing effect
-                    const progress = elapsed / this.closingAnimation.duration;
-                    this.cells.forEach(cell => {
-                        cell.size *= (1 - progress * 0.1);
-                    });
-                }
+                // Update movement
+                this.vel.add(this.acc);
+                this.vel.limit(this.maxSpeed);
+                this.pos.add(this.vel);
+                this.acc.mult(0);
+
+                // Wrap around screen edges
+                const margin = this.size;
+                if (this.pos.x < -margin) this.pos.x = width + margin;
+                if (this.pos.x > width + margin) this.pos.x = -margin;
+                if (this.pos.y < -margin) this.pos.y = height + margin;
+                if (this.pos.y > height + margin) this.pos.y = -margin;
+
+                // Update animations
+                this.rotationPhase += 0.02;
+                this.phase += this.pulseSpeed;
             }
 
             display() {
                 push();
                 translate(this.pos.x, this.pos.y);
-                rotate(this.rotationAngle);
-                
-                // Sort cells by z-offset for proper 3D rendering
-                const sortedCells = [...this.cells].sort((a, b) => a.zOffset - b.zOffset);
-                
-                // Draw cells with 3D effect
-                sortedCells.forEach(cell => {
-                    push();
-                    
-                    // Calculate cell position with perspective
-                    const perspective = map(cell.zOffset, -20, 20, 0.8, 1.2);
-                    const xPos = cell.offset.x * perspective;
-                    const yPos = cell.offset.y * perspective;
-                    
-                    // Pulse animation
-                    const pulse = sin(frameCount * cell.pulseSpeed + cell.phase) * 0.2 + 0.8;
-                    const finalSize = cell.size * perspective * pulse;
-                    
-                    // Draw cell shadow
+                rotate(this.rotationPhase);
+
+                // Draw glow effect
+                for (let i = 3; i > 0; i--) {
                     noStroke();
-                    fill(0, 0, 0, 20);
-                    ellipse(xPos + 5, yPos + 5, finalSize * 0.9);
-                    
-                    // Draw cell glow
-                    for(let i = 3; i > 0; i--) {
-                        const glowSize = finalSize + i * 4;
-                        const glowAlpha = map(i, 0, 3, 0, 50);
-                        if (this.isGain) {
-                            fill(100, 255, 100, glowAlpha);
-                        } else {
-                            fill(255, 100, 100, glowAlpha);
-                        }
-                        ellipse(xPos, yPos, glowSize);
-                    }
-                    
-                    // Draw main cell body with gradient
-                    const baseColor = this.isGain ? 
-                        color(100, 255, 100) : 
-                        color(255, 100, 100);
-                    
-                    // Outer glow
-                    const gradientSteps = 5;
-                    for(let i = gradientSteps; i > 0; i--) {
-                        const ratio = i / gradientSteps;
-                        const gradientColor = lerpColor(
-                            color(baseColor.levels[0], baseColor.levels[1], baseColor.levels[2], 0),
-                            color(baseColor.levels[0], baseColor.levels[1], baseColor.levels[2], 150),
-                            ratio
-                        );
-                        fill(gradientColor);
-                        ellipse(xPos, yPos, finalSize * ratio);
-                    }
-                    
-                    // Cell highlight
-                    fill(255, 255, 255, 100);
-                    const highlightSize = finalSize * 0.3;
-                    const highlightOffset = finalSize * 0.2;
-                    ellipse(xPos - highlightOffset, yPos - highlightOffset, highlightSize);
-                    
-                    pop();
-                });
-                
-                // Draw symbol and value with 3D effect
-                const textOffset = this.isClosing ? map(this.closingAnimation.elapsed, 0, this.closingAnimation.duration, 0, -50) : 0;
-                
-                // Text shadow
-                fill(0, 0, 0, 50);
-                textAlign(CENTER);
-                textSize(16);
-                text(this.position.symbol, 2, textOffset + 2);
-                text('$' + this.position.marketValue.toFixed(2), 2, textOffset + 22);
-                
-                // Main text with glow
-                for(let i = 3; i > 0; i--) {
-                    fill(255, 255, 255, i * 30);
-                    text(this.position.symbol, 0, textOffset);
-                    text('$' + this.position.marketValue.toFixed(2), 0, textOffset + 20);
+                    const alpha = map(i, 3, 0, 30, 100);
+                    const color = this.isGain ? [100, 255, 100, alpha] : [255, 100, 100, alpha];
+                    fill(...color);
+                    const size = this.size + i * 5 + sin(this.phase) * 3;
+                    circle(0, 0, size);
                 }
-                
+
+                // Draw main cell
+                const mainColor = this.isGain ? color(100, 255, 100) : color(255, 100, 100);
+                fill(mainColor);
+                const mainSize = this.size + sin(this.phase) * 2;
+                circle(0, 0, mainSize);
+
+                // Add highlight
+                fill(255, 100);
+                circle(-this.size/4, -this.size/4, this.size/3);
+
+                // Draw value
+                fill(255);
+                noStroke();
+                textAlign(CENTER, CENTER);
+                textSize(10);
+                text('$' + abs(this.marketValue).toFixed(0), 0, 0);
+
                 pop();
             }
 
             containsPoint(x, y) {
-                return dist(x, y, this.pos.x, this.pos.y) < 50;
-            }
-
-            startClosing() {
-                this.isClosing = true;
-                this.closingAnimation = {
-                    startTime: millis(),
-                    duration: 3000
-                };
-            }
-
-            onClose() {
-                // Move position from open to closed
-                const index = positionHistory.open.indexOf(this.position);
-                if (index > -1) {
-                    positionHistory.open.splice(index, 1);
-                    this.position.isOpen = false;
-                    this.position.closeDate = new Date();
-                    positionHistory.closed.push(this.position);
-                    
-                    // Update realized gains/losses
-                    if (this.position.gainLoss > 0) {
-                        positionHistory.realizedGains += this.position.gainLoss;
-                    } else {
-                        positionHistory.realizedLosses += this.position.gainLoss;
-                    }
-                    
-                    // Add to history
-                    positionHistory.history.push({
-                        type: 'close',
-                        symbol: this.position.symbol,
-                        gainLoss: this.position.gainLoss,
-                        timestamp: new Date()
-                    });
-                    
-                    // Update portfolio and metrics
-                    portfolio.realizedValue += this.position.gainLoss;
-                    portfolio.updateValue();
-                    performanceMetrics.update();
-                    
-                    // Remove cluster
-                    const clusterArray = this.isGain ? gainClusters : lossClusters;
-                    const clusterIndex = clusterArray.indexOf(this);
-                    if (clusterIndex > -1) {
-                        clusterArray.splice(clusterIndex, 1);
-                    }
-                    
-                    // Save updated history
-                    saveHistory();
-                }
+                return dist(x, y, this.pos.x, this.pos.y) < this.size/2;
             }
         }
 
         class Amoeba {
             constructor(x, y) {
                 this.pos = createVector(x, y);
+                this.vel = createVector(0, 0);
+                this.acc = createVector(0, 0);
+                this.target = null;  // Current cell being chased
                 this.radius = 50;
                 this.points = [];
                 this.tentacles = [];
                 this.noiseOffset = random(1000);
-                this.velocity = createVector(0, 0);
-                this.target = createVector(x, y);
+                this.maxSpeed = 4;
+                this.maxForce = 0.2;
+                this.searchRadius = 200;  // Radius to look for cells
+                this.followMouse = true;  // By default, follow the mouse
                 
-                // Create base shape points with more detail
-                const numPoints = 48; // Increased for smoother shape
+                // Initialize body points
+                const numPoints = 36;
                 for (let i = 0; i < numPoints; i++) {
                     const angle = map(i, 0, numPoints, 0, TWO_PI);
                     this.points.push({
                         angle: angle,
                         radius: this.radius,
-                        noiseOffset: random(1000),
-                        wobbleSpeed: random(0.02, 0.05)
+                        noiseOffset: random(1000)
                     });
                 }
                 
-                // Create tentacles with improved parameters
-                for (let i = 0; i < 12; i++) {
+                // Initialize tentacles
+                const numTentacles = 8;
+                for (let i = 0; i < numTentacles; i++) {
+                    const angle = map(i, 0, numTentacles, 0, TWO_PI);
                     this.tentacles.push({
-                        angle: (TWO_PI / 12) * i, // Evenly distribute tentacles
-                        length: random(60, 120), // Longer tentacles
+                        angle: angle,
                         segments: [],
-                        phase: random(TWO_PI),
-                        thickness: random(8, 15),
-                        speed: random(0.01, 0.03),
-                        amplitude: random(0.2, 0.4)
+                        noiseOffset: random(1000)
+                    });
+                    
+                    const numSegments = 5;
+                    for (let j = 0; j < numSegments; j++) {
+                        const segmentLength = map(j, 0, numSegments, this.radius * 0.4, this.radius * 0.1);
+                        this.tentacles[i].segments.push({
+                            length: segmentLength,
+                            angle: angle,
+                            noiseOffset: random(1000)
+                        });
+                    }
+                }
+            }
+
+            update() {
+                // Get mouse position in world space
+                const mousePos = createVector(
+                    (mouseX - width/2) / zoomLevel + width/2 - panX,
+                    (mouseY - height/2) / zoomLevel + height/2 - panY
+                );
+
+                if (this.followMouse) {
+                    // Follow mouse cursor
+                    const desired = p5.Vector.sub(mousePos, this.pos);
+                    const d = desired.mag();
+                    
+                    if (d < 10) {
+                        // If very close to mouse, slow down
+                        desired.setMag(map(d, 0, 10, 0, this.maxSpeed));
+                    } else {
+                        desired.setMag(this.maxSpeed);
+                    }
+                    
+                    const steer = p5.Vector.sub(desired, this.vel);
+                    steer.limit(this.maxForce);
+                    this.acc.add(steer);
+                } else if (!this.target) {
+                    // Find nearest cell if not following mouse and no target
+                    let nearestDist = this.searchRadius;
+                    const allCells = [...gainCells, ...lossCells];
+                    allCells.forEach(cell => {
+                        const d = p5.Vector.dist(this.pos, cell.pos);
+                        if (d < nearestDist) {
+                            nearestDist = d;
+                            this.target = cell;
+                        }
                     });
                 }
-            }
-            
-            update() {
-                // Update movement
-                const wanderRadius = 200;
-                if (random() < 0.02 || this.pos.dist(this.target) < 10) {
-                    // Set new target
-                    this.target.x = width/2 + random(-wanderRadius, wanderRadius);
-                    this.target.y = height/2 + random(-wanderRadius, wanderRadius);
+
+                // If not following mouse and has target, chase it
+                if (!this.followMouse && this.target) {
+                    const d = p5.Vector.dist(this.pos, this.target.pos);
+                    if (d < this.searchRadius) {
+                        const desired = p5.Vector.sub(this.target.pos, this.pos);
+                        desired.normalize();
+                        desired.mult(this.maxSpeed);
+                        const steer = p5.Vector.sub(desired, this.vel);
+                        steer.limit(this.maxForce);
+                        this.acc.add(steer);
+                    } else {
+                        this.target = null;
+                    }
                 }
                 
-                // Move towards target with smooth acceleration
-                const desired = p5.Vector.sub(this.target, this.pos);
-                desired.normalize();
-                desired.mult(2); // Speed factor
-                const steer = p5.Vector.sub(desired, this.velocity);
-                steer.limit(0.1); // Limit steering force
-                this.velocity.add(steer);
-                this.velocity.limit(3); // Limit max speed
-                this.pos.add(this.velocity);
-
-                // Update body shape with improved wobble
-                this.points.forEach(point => {
-                    const timeOffset = frameCount * point.wobbleSpeed;
-                    const noiseVal = noise(
-                        cos(point.angle) * 0.5 + timeOffset,
-                        sin(point.angle) * 0.5 + this.noiseOffset,
-                        frameCount * 0.01
-                    );
-                    point.radius = this.radius + map(noiseVal, 0, 1, -25, 25);
-                });
+                // Update position
+                this.vel.add(this.acc);
+                this.vel.limit(this.maxSpeed);
+                this.pos.add(this.vel);
+                this.acc.mult(0);
                 
-                // Update tentacles with more organic movement
+                // Wrap around screen edges
+                if (this.pos.x < -this.radius) this.pos.x = width + this.radius;
+                if (this.pos.x > width + this.radius) this.pos.x = -this.radius;
+                if (this.pos.y < -this.radius) this.pos.y = height + this.radius;
+                if (this.pos.y > height + this.radius) this.pos.y = -this.radius;
+
+                // Update body shape
+                this.points.forEach(point => {
+                    const noiseVal = noise(point.noiseOffset + frameCount * 0.03);
+                    point.radius = this.radius + map(noiseVal, 0, 1, -10, 10);
+                    point.noiseOffset += 0.02;
+                });
+
+                // Update tentacles to point towards target
                 this.tentacles.forEach(tentacle => {
-                    // Base angle follows movement direction
-                    const moveAngle = this.velocity.heading();
-                    tentacle.angle = moveAngle + tentacle.phase;
-                    
-                    // Update tentacle segments with improved wave motion
-                    const numSegments = 15; // More segments for smoother curves
-                    tentacle.segments = [];
-                    let prevX = 0;
-                    let prevY = 0;
-                    
-                    for (let i = 0; i < numSegments; i++) {
-                        const segmentLength = tentacle.length / numSegments;
-                        const waveOffset = sin(frameCount * tentacle.speed + tentacle.phase + i * 0.3) * 
-                                         tentacle.amplitude * i;
-                        const segmentAngle = tentacle.angle + waveOffset;
-                        
-                        const x = prevX + cos(segmentAngle) * segmentLength;
-                        const y = prevY + sin(segmentAngle) * segmentLength;
-                        
-                        tentacle.segments.push(createVector(x, y));
-                        prevX = x;
-                        prevY = y;
+                    let targetAngle = tentacle.angle;
+                    if (this.followMouse) {
+                        targetAngle = atan2(
+                            mousePos.y - this.pos.y,
+                            mousePos.x - this.pos.x
+                        );
+                    } else if (this.target) {
+                        targetAngle = atan2(
+                            this.target.pos.y - this.pos.y,
+                            this.target.pos.x - this.pos.x
+                        );
                     }
+                    
+                    tentacle.segments.forEach(segment => {
+                        const noiseVal = noise(segment.noiseOffset + frameCount * 0.03);
+                        segment.angle = lerp(segment.angle, targetAngle, 0.1) + map(noiseVal, 0, 1, -0.4, 0.4);
+                        segment.noiseOffset += 0.02;
+                    });
                 });
             }
-            
+
             display() {
                 push();
                 translate(this.pos.x, this.pos.y);
-                
-                // Draw tentacles with gradient and glow effect
+
+                // Draw tentacles
                 this.tentacles.forEach(tentacle => {
-                    push();
-                    noFill();
+                    let prevX = 0;
+                    let prevY = 0;
                     
-                    // Draw glow effect
-                    for(let i = 3; i > 0; i--) {
-                        stroke(150, 200, 255, 20);
-                        strokeWeight(tentacle.thickness + i * 4);
-                        beginShape();
-                        tentacle.segments.forEach(segment => {
-                            curveVertex(segment.x, segment.y);
-                        });
-                        endShape();
-                    }
-                    
-                    // Draw main tentacle with gradient
-                    beginShape();
-                    for(let i = 0; i < tentacle.segments.length; i++) {
-                        const segment = tentacle.segments[i];
-                        const alpha = map(i, 0, tentacle.segments.length - 1, 150, 50);
-                        stroke(150, 200, 255, alpha);
-                        strokeWeight(map(i, 0, tentacle.segments.length - 1, 
-                                      tentacle.thickness, tentacle.thickness * 0.3));
-                        curveVertex(segment.x, segment.y);
-                    }
-                    endShape();
-                    pop();
+                    tentacle.segments.forEach((segment, i) => {
+                        const x = prevX + cos(segment.angle) * segment.length;
+                        const y = prevY + sin(segment.angle) * segment.length;
+                        
+                        stroke(100, 150, 255, map(i, 0, tentacle.segments.length, 150, 50));
+                        strokeWeight(map(i, 0, tentacle.segments.length, 8, 2));
+                        line(prevX, prevY, x, y);
+                        
+                        prevX = x;
+                        prevY = y;
+                    });
                 });
-                
-                // Draw body with gradient and glow
-                for(let i = 3; i > 0; i--) {
+
+                // Draw main cell body with gradient
+                for (let i = 0; i < 3; i++) {
                     beginShape();
                     noStroke();
-                    fill(100, 150, 255, 10);
-                    this.points.forEach(point => {
-                        const x = cos(point.angle) * (point.radius + i * 8);
-                        const y = sin(point.angle) * (point.radius + i * 8);
+                    for (let j = 0; j < this.points.length; j++) {
+                        const point = this.points[j];
+                        const alpha = map(sin(point.angle), -1, 1, 100, 150);
+                        fill(100, 150, 255, alpha - i * 30);
+                        const x = cos(point.angle) * (point.radius - i * 5);
+                        const y = sin(point.angle) * (point.radius - i * 5);
                         curveVertex(x, y);
-                    });
-                    // Close the shape
+                    }
                     const firstPoint = this.points[0];
-                    const x = cos(firstPoint.angle) * (firstPoint.radius + i * 8);
-                    const y = sin(firstPoint.angle) * (firstPoint.radius + i * 8);
+                    const x = cos(firstPoint.angle) * (firstPoint.radius - i * 5);
+                    const y = sin(firstPoint.angle) * (firstPoint.radius - i * 5);
                     curveVertex(x, y);
                     endShape(CLOSE);
                 }
-                
-                // Main body with gradient
+
+                // Add highlight effect
                 beginShape();
                 noStroke();
-                for(let i = 0; i < this.points.length; i++) {
+                for (let i = 0; i < this.points.length; i++) {
                     const point = this.points[i];
                     const alpha = map(sin(point.angle), -1, 1, 100, 150);
-                    fill(100, 150, 255, alpha);
-                    const x = cos(point.angle) * point.radius;
-                    const y = sin(point.angle) * point.radius;
+                    fill(255, alpha);
+                    const x = cos(point.angle) * point.radius * 0.7;
+                    const y = sin(point.angle) * point.radius * 0.7;
                     curveVertex(x, y);
                 }
                 const firstPoint = this.points[0];
-                const x = cos(firstPoint.angle) * firstPoint.radius;
-                const y = sin(firstPoint.angle) * firstPoint.radius;
+                const x = cos(firstPoint.angle) * firstPoint.radius * 0.7;
+                const y = sin(firstPoint.angle) * firstPoint.radius * 0.7;
                 curveVertex(x, y);
                 endShape(CLOSE);
-                
+
                 pop();
+            }
+
+            containsPoint(x, y) {
+                const d = dist(x, y, this.pos.x, this.pos.y);
+                return d < this.radius;
             }
         }
 
@@ -854,69 +900,124 @@
         }
 
         function draw() {
-            background(240);
+            background(20);
             
-            // Apply transformations
+            // Apply transformations for pan, zoom, and rotation
             push();
             translate(width/2, height/2);
             scale(zoomLevel);
             rotate(rotation);
             translate(-width/2 + panX, -height/2 + panY);
             
-            // Update and display clusters
-            [...gainClusters, ...lossClusters].forEach(cluster => {
-                cluster.update();
-                cluster.display();
+            // Update and display all cells
+            [...gainCells, ...lossCells].forEach(cell => {
+                cell.update();
+                cell.display();
             });
             
             // Update and display amoeba
             amoeba.update();
             amoeba.display();
             
-            // Update amoeba size based on portfolio value
-            const normalizedValue = map(portfolio.getCurrentValue(), 0, 1000, 30, 70);
-            amoeba.radius = normalizedValue;
-            
             pop();
             
-            // Display timeline and metrics
-            timelineVisualizer.update();
-            timelineVisualizer.display(portfolio.getHistory());
-            performanceMetrics.display(portfolio);
-            
-            // Update display
-            updateDisplay();
+            // Only draw UI elements if they're not hidden
+            if (!uiHidden) {
+                // Update timeline and metrics
+                timelineVisualizer.update();
+                timelineVisualizer.display(portfolio.getHistory());
+                performanceMetrics.update();
+                performanceMetrics.display(portfolio);
+            }
         }
 
+        // Add global variable for UI visibility
+        let uiHidden = false;
+
         function mouseDragged() {
-            if (mouseButton === LEFT) {
+            if (mouseButton === LEFT && !keyIsPressed) {
+                // Pan when left mouse is dragged
                 panX += movedX / zoomLevel;
                 panY += movedY / zoomLevel;
-            } else if (mouseButton === RIGHT) {
+            } else if (mouseButton === RIGHT || (mouseButton === LEFT && keyIsPressed && keyCode === SHIFT)) {
+                // Rotate when right mouse is dragged or left mouse + shift
                 rotation += movedX * 0.01;
             }
             return false;
         }
 
-        function mousePressed() {
-            // Check for cluster selection
-            const mousePos = createVector(mouseX, mouseY);
-            [...gainClusters, ...lossClusters].forEach(cluster => {
-                if (cluster.containsPoint(mouseX, mouseY)) {
-                    selectedCluster = cluster;
-                    showClosePositionDialog(cluster);
-                }
-            });
+        function mouseWheel(event) {
+            // Zoom in/out with mouse wheel
+            const zoomSensitivity = 0.05;
+            const newZoomLevel = zoomLevel * (1 - event.delta * zoomSensitivity * 0.01);
             
-            if (mouseButton === LEFT) isDragging = true;
-            else if (mouseButton === RIGHT) isRotating = true;
+            // Constrain zoom level
+            zoomLevel = constrain(newZoomLevel, 0.5, 5);
+            
+            // Adjust pan to zoom towards mouse position
+            const mouseXBeforeZoom = (mouseX - width/2) / zoomLevel + width/2 - panX;
+            const mouseYBeforeZoom = (mouseY - height/2) / zoomLevel + height/2 - panY;
+            
+            const mouseXAfterZoom = (mouseX - width/2) / newZoomLevel + width/2 - panX;
+            const mouseYAfterZoom = (mouseY - height/2) / newZoomLevel + height/2 - panY;
+            
+            panX += (mouseXAfterZoom - mouseXBeforeZoom) * newZoomLevel;
+            panY += (mouseYAfterZoom - mouseYBeforeZoom) * newZoomLevel;
+            
             return false;
         }
 
-        function mouseReleased() {
-            isDragging = false;
-            isRotating = false;
-            selectedCluster = null;
+        function mousePressed() {
+            // Check for cell selection only when not panning/rotating
+            if (!keyIsPressed && mouseButton === LEFT) {
+                const mousePos = createVector(
+                    (mouseX - width/2) / zoomLevel + width/2 - panX,
+                    (mouseY - height/2) / zoomLevel + height/2 - panY
+                );
+                
+                [...gainCells, ...lossCells].forEach(cell => {
+                    if (cell.containsPoint(mousePos.x, mousePos.y)) {
+                        selectedCluster = cell;
+                        showClosePositionDialog(cell);
+                    }
+                });
+            }
+            
+            return false;
+        }
+
+        function keyPressed() {
+            if (key === 'h' || key === 'H') {
+                // Toggle UI visibility
+                uiHidden = !uiHidden;
+                const uiElements = [
+                    document.getElementById('portfolio-status'),
+                    document.getElementById('metrics'),
+                    document.getElementById('timeline'),
+                    document.getElementById('closePositionDialog')
+                ];
+                uiElements.forEach(el => {
+                    if (el) {
+                        el.style.display = uiHidden ? 'none' : 'block';
+                    }
+                });
+                // Keep instruction prompt visible unless explicitly hidden
+                document.getElementById('instruction-prompt').style.display = 
+                    uiHidden ? 'none' : 'block';
+            } else if (key === 'm' || key === 'M') {
+                // Toggle mouse following
+                amoeba.followMouse = !amoeba.followMouse;
+                amoeba.target = null;  // Clear current target when switching modes
+            } else if (key === 'i' || key === 'I') {
+                // Toggle instruction overlay
+                const overlay = document.getElementById('instruction-overlay');
+                const currentDisplay = overlay.style.display;
+                overlay.style.display = currentDisplay === 'none' ? 'block' : 'none';
+                
+                // Hide the prompt when instructions are shown
+                document.getElementById('instruction-prompt').style.display = 
+                    currentDisplay === 'none' ? 'none' : 'block';
+            }
         }
 
         function showClosePositionDialog(cluster) {
@@ -953,21 +1054,6 @@
                 };
                 portfolio.updateValue();
                 performanceMetrics.update();
-            }
-        }
-
-        function keyPressed() {
-            if (key === 'h' || key === 'H') {
-                const uiElements = [
-                    document.getElementById('portfolio-status'),
-                    document.getElementById('metrics'),
-                    document.getElementById('timeline')
-                ];
-                uiElements.forEach(el => {
-                    if (el) {
-                        el.style.display = el.style.display === 'none' ? 'block' : 'none';
-                    }
-                });
             }
         }
 
